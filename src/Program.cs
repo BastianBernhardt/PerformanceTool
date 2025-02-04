@@ -16,7 +16,6 @@ class Program
 
     static void Main(string[] args)
     {
-        // Initialer Aufruf des Total CPU Counters zum "Wärmen"
         totalCpuCounter.NextValue();
 
         while (true)
@@ -30,15 +29,11 @@ class Program
     static ProcessInfo GetProcessInfo()
     {
         var processes = Process.GetProcesses();
-        var topProcesses = processes.Select(p =>
+        var topProcesses = processes.Select(p => new ProcessDetail
         {
-            double cpuUsage = GetCpuUsage(p);
-            return new ProcessDetail
-            {
-                ProcessName = p.ProcessName,
-                CpuUsage = cpuUsage,
-                MemoryUsage = p.WorkingSet64
-            };
+            ProcessName = p.ProcessName,
+            CpuUsage = GetCpuUsage(p),
+            MemoryUsage = p.WorkingSet64
         })
         .OrderByDescending(detail => detail.CpuUsage)
         .Take(5)
@@ -58,10 +53,8 @@ class Program
         {
             if (!processCpuCounters.TryGetValue(process.Id, out PerformanceCounter counter))
             {
-                // Neuerstellen und cachen des Counters für diesen Prozess.
-                // Hinweis: Je nach System kann es nötig sein, einen korrekten Instanznamen zu ermitteln.
                 counter = new PerformanceCounter("Process", "% Processor Time", process.ProcessName, true);
-                counter.NextValue(); // Warm-up-Aufruf
+                counter.NextValue(); // Warm-up
                 processCpuCounters[process.Id] = counter;
             }
             double cpuUsage = counter.NextValue() / Environment.ProcessorCount;
@@ -69,7 +62,6 @@ class Program
         }
         catch
         {
-            // Falls ein Fehler auftritt (z.B. Prozess beendet), Counter entfernen.
             processCpuCounters.Remove(process.Id);
             return 0.0;
         }
@@ -90,8 +82,14 @@ class Program
 
     static void LogProcessInfo(ProcessInfo processInfo)
     {
-        string json = JsonConvert.SerializeObject(processInfo, Formatting.Indented);
-        // Anhängen an die JSON-Datei, ohne vorhandenen Inhalt zu überschreiben
+        var logEntry = new
+        {
+            Timestamp = DateTime.Now,
+            TotalCpuUsage = processInfo.TotalCpuUsage,
+            Processes = processInfo.Processes
+        };
+
+        string json = JsonConvert.SerializeObject(logEntry, Formatting.Indented);
         File.AppendAllText("process_log.json", json + Environment.NewLine);
     }
 }
